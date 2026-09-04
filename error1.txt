@@ -8,3 +8,11 @@ File "extract_sfsm_reports.py", line 23, in <module>
 
 Abaqus Error: viewer exited with an error.
 Abaqus Error: Abaqus/Viewer exited with an error
+C:\Data\P1-2\00_NewFA>abaqus python extract_sfsm_reports.py --GdM_10inProd_InterfaceLoad_PLETanchorNew.odb
+usage: extract_sfsm_reports.py [-h] [--input-dir INPUT_DIR] [--odb ODB]
+                               [--output-dir OUTPUT_DIR]
+                               [--output-name OUTPUT_NAME]
+                               [--node-set NODE_SET]
+                               [--steps STEPS [STEPS ...]]
+                               [--frame-index FRAME_INDEX]
+extract_sfsm_reports.py: error: unrecognized arguments: --GdM_10inProd_InterfaceLoad_PLETanchorNew.odb
