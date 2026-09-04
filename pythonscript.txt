@@ -1,0 +1,18 @@
+o1 = session.openOdbs(names=(
+    'C:/Data/P1-2/00_NewFA/00_10inPLET/GdM_10inProd_InterfaceLoad_PLETanchor_Neg1d5dedNew.odb', 
+    'C:/Data/P1-2/00_NewFA/00_10inPLET/GdM_10inProd_InterfaceLoad_PLETanchor_Neg1degNew.odb', 
+    'C:/Data/P1-2/00_NewFA/00_10inPLET/GdM_10inProd_InterfaceLoad_PLETanchor_Neg2degNew.odb', 
+    'C:/Data/P1-2/00_NewFA/00_10inPLET/GdM_10inProd_InterfaceLoad_PLETanchor_Pos1degNew.odb', 
+    'C:/Data/P1-2/00_NewFA/00_10inPLET/GdM_10inProd_InterfaceLoad_PLETanchor_Pos2degNew.odb', 
+    'C:/Data/P1-2/00_NewFA/00_10inPLET/GdM_10inProd_InterfaceLoad_PLETanchorNew.odb'))
+odbName=session.viewports[session.currentViewportName].odbDisplay.name
+session.odbData[odbName].setValues(activeFrames=(('Step-6', (1, )), ('Step-7', 
+    (1, )), ))
+leaf = dgo.LeafFromNodeSets(nodeSets=("PART-1-1.START", ))
+session.viewports['Viewport: 1'].odbDisplay.displayGroup.replace(leaf=leaf)
+#: Warning: Display groups containing only nodes are not supported in contour plot mode. Select a different plot mode and activate node symbols and/or labels to see the selected nodes.
+odb = session.odbs['C:/Data/P1-2/00_NewFA/00_10inPLET/GdM_10inProd_InterfaceLoad_PLETanchorNew.odb']
+session.writeFieldReport(fileName='10inPLET_0deg.rpt', append=OFF, 
+    sortItem='Node Label', odb=odb, step=6, frame=1, outputPosition=NODAL, 
+    variable=(('ESF1', INTEGRATION_POINT), ('SF', INTEGRATION_POINT), ('SM', 
+    INTEGRATION_POINT), ), stepFrame=ALL)
