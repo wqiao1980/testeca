@@ -10,7 +10,8 @@ Run with the Abaqus Python environment, for example:
 The first command processes one ODB.  The second command processes every ODB
 in the input directory (non-recursively).  By default reports are written next
 to the ODB files. Integration-point results are extrapolated to element nodes
-and the contributions at each requested node are averaged.
+and the contributions at each requested node are averaged. By default every
+ODB step is included, using its last frame that contains ESF1, SF, and SM.
 """
 
 import argparse
@@ -25,8 +26,7 @@ from odbAccess import openOdb
 
 
 DEFAULT_NODE_SET = "PART-1-1.START"
-DEFAULT_STEPS = ("Step-6", "Step-7")
-DEFAULT_FRAME_INDEX = 1
+DEFAULT_FRAME_INDEX = -1
 FIELD_NAMES = ("ESF1", "SF", "SM")
 COLUMN_SPECS = (
     ("ESF1", 0, "ESF1"),
@@ -80,19 +80,22 @@ def parse_arguments():
     parser.add_argument(
         "--steps",
         nargs="+",
-        default=list(DEFAULT_STEPS),
-        help="ODB step names to include (default: Step-6 Step-7).",
+        default=None,
+        help="ODB step names to include (default: every step in each ODB).",
     )
     parser.add_argument(
         "--frame-index",
         type=int,
         default=DEFAULT_FRAME_INDEX,
-        help="Zero-based frame index in each selected step (default: 1).",
+        help=(
+            "Zero-based frame index in each step. Use -1 for the last frame "
+            "containing all requested fields (default: -1)."
+        ),
     )
     args = parser.parse_args()
 
-    if args.frame_index < 0:
-        parser.error("--frame-index must be zero or greater")
+    if args.frame_index < -1:
+        parser.error("--frame-index must be -1 or zero or greater")
     if args.output_name and len(args.odb) != 1:
         parser.error("--output-name requires exactly one --odb")
     return args
@@ -176,8 +179,11 @@ def resolve_instance_node_set(odb, qualified_name):
     return instance_key, set_key, node_labels
 
 
-def validate_requested_data(odb, step_names, frame_index):
+def select_requested_frames(odb, requested_steps, frame_index):
+    """Return usable (step name, frame index, frame) tuples and skip messages."""
     available_steps = list(odb.steps.keys())
+    step_names = available_steps if requested_steps is None else requested_steps
+
     for step_name in step_names:
         if step_name not in available_steps:
             raise ValueError(
@@ -186,22 +192,60 @@ def validate_requested_data(odb, step_names, frame_index):
                 )
             )
 
+    selected = []
+    skipped = []
+    for step_name in step_names:
         frames = odb.steps[step_name].frames
-        if frame_index >= len(frames):
-            raise ValueError(
-                "Step '{0}' has {1} frame(s); frame index {2} is unavailable.".format(
-                    step_name, len(frames), frame_index
-                )
-            )
+        if len(frames) == 0:
+            skipped.append((step_name, "the step contains no frames"))
+            continue
 
-        field_names = frames[frame_index].fieldOutputs.keys()
-        missing = [name for name in FIELD_NAMES if name not in field_names]
-        if missing:
-            raise ValueError(
-                "Step '{0}', frame {1} is missing field output(s): {2}".format(
-                    step_name, frame_index, ", ".join(missing)
+        if frame_index == -1:
+            candidate_indices = range(len(frames) - 1, -1, -1)
+        elif frame_index >= len(frames):
+            skipped.append(
+                (
+                    step_name,
+                    "frame index {0} is unavailable; the step has {1} frame(s)".format(
+                        frame_index, len(frames)
+                    ),
                 )
             )
+            continue
+        else:
+            candidate_indices = (frame_index,)
+
+        selected_frame = None
+        last_missing = []
+        for candidate_index in candidate_indices:
+            frame = frames[candidate_index]
+            field_names = frame.fieldOutputs.keys()
+            last_missing = [name for name in FIELD_NAMES if name not in field_names]
+            if not last_missing:
+                selected_frame = (step_name, candidate_index, frame)
+                break
+
+        if selected_frame is None:
+            if frame_index == -1:
+                reason = "no frame contains all requested fields: {0}".format(
+                    ", ".join(FIELD_NAMES)
+                )
+            else:
+                reason = "frame {0} is missing field output(s): {1}".format(
+                    frame_index, ", ".join(last_missing)
+                )
+            skipped.append((step_name, reason))
+        else:
+            selected.append(selected_frame)
+
+    if not selected:
+        details = "; ".join(
+            "{0}: {1}".format(step_name, reason) for step_name, reason in skipped
+        )
+        raise ValueError(
+            "No usable steps were found for ESF1, SF, and SM. {0}".format(details)
+        )
+    return selected, skipped
 
 
 def field_value_data(value):
@@ -353,21 +397,22 @@ def write_report(odb_path, report_path, node_set_name, step_names, frame_index):
     try:
         print("Opening: {0}".format(odb_path))
         odb = openOdb(path=odb_path, readOnly=True)
-        validate_requested_data(odb, step_names, frame_index)
+        selected_frames, skipped_steps = select_requested_frames(
+            odb, step_names, frame_index
+        )
         instance_name, set_name, node_labels = resolve_instance_node_set(
             odb, node_set_name
         )
 
         extracted_frames = []
         max_contributions = 0
-        for step_name in step_names:
-            frame = odb.steps[step_name].frames[frame_index]
+        for step_name, selected_frame_index, frame in selected_frames:
             rows, contribution_counts = extract_frame_data(
                 frame, instance_name, node_labels
             )
             for field_counts in contribution_counts.values():
                 max_contributions = max(max_contributions, max(field_counts.values()))
-            extracted_frames.append((step_name, frame, rows))
+            extracted_frames.append((step_name, selected_frame_index, frame, rows))
 
         with open(report_path, "w") as report_file:
             report_file.write("*" * 80 + "\n")
@@ -376,7 +421,7 @@ def write_report(odb_path, report_path, node_set_name, step_names, frame_index):
                     datetime.datetime.now().strftime("%a %b %d %H:%M:%S %Y")
                 )
             )
-            for step_name, frame, rows in extracted_frames:
+            for step_name, selected_frame_index, frame, rows in extracted_frames:
                 report_file.write("Source 1\n")
                 report_file.write("---------\n\n")
                 report_file.write("   ODB: {0}\n".format(odb_path.replace("\\", "/")))
@@ -396,6 +441,17 @@ def write_report(odb_path, report_path, node_set_name, step_names, frame_index):
                 write_table(report_file, rows)
 
         print("Wrote:   {0}".format(report_path))
+        if frame_index == -1:
+            frame_message = "the last usable frame in each step"
+        else:
+            frame_message = "frame index {0} in each step".format(frame_index)
+        print(
+            "Included {0} step(s), using {1}.".format(
+                len(extracted_frames), frame_message
+            )
+        )
+        for skipped_step, reason in skipped_steps:
+            print("Skipped step '{0}': {1}.".format(skipped_step, reason))
         if max_contributions > 1:
             print(
                 "Note: up to {0} element-nodal contributions were arithmetically "
