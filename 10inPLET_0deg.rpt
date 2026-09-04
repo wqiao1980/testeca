@@ -1,0 +1,65 @@
+********************************************************************************
+Field Output Report, written Fri Sep  4 10:58:59 2026
+
+Source 1
+---------
+
+   ODB: C:/Data/P1-2/00_NewFA/00_10inPLET/GdM_10inProd_InterfaceLoad_PLETanchorNew.odb
+   Step: Step-6
+   Frame: Increment      6: Step Time =    1.000
+
+Loc 1 : Nodal values from source 1
+
+Output sorted by column "Node Label".
+
+Field Output reported at nodes for region: PART-1-1.Region_1
+   Computation algorithm: EXTRAPOLATE_COMPUTE_AVERAGE
+   Averaged at nodes
+   Averaging regions: ODB_REGIONS
+
+      Node Label            ESF1          SF.SF1          SF.SF2          SF.SF3          SM.SM1          SM.SM2          SM.SM3
+                          @Loc 1          @Loc 1          @Loc 1          @Loc 1          @Loc 1          @Loc 1          @Loc 1
+---------------------------------------------------------------------------------------------------------------------------------
+               1    -523.994E+03    -523.994E+03    -6.98670E-12     10.4004E+03     106.411E-12     237.518E+03    -4.32646E-12
+
+
+  Minimum           -523.994E+03    -523.994E+03    -6.98670E-12     10.4004E+03     106.411E-12     237.518E+03    -4.32646E-12
+         At Node               1               1               1               1               1               1               1
+
+  Maximum           -523.994E+03    -523.994E+03    -6.98670E-12     10.4004E+03     106.411E-12     237.518E+03    -4.32646E-12
+         At Node               1               1               1               1               1               1               1
+
+           Total    -523.994E+03    -523.994E+03    -6.98670E-12     10.4004E+03     106.411E-12     237.518E+03    -4.32646E-12
+
+
+Source 1
+---------
+
+   ODB: C:/Data/P1-2/00_NewFA/00_10inPLET/GdM_10inProd_InterfaceLoad_PLETanchorNew.odb
+   Step: Step-7
+   Frame: Increment      6: Step Time =    1.000
+
+Loc 1 : Nodal values from source 1
+
+Output sorted by column "Node Label".
+
+Field Output reported at nodes for region: PART-1-1.Region_1
+   Computation algorithm: EXTRAPOLATE_COMPUTE_AVERAGE
+   Averaged at nodes
+   Averaging regions: ODB_REGIONS
+
+      Node Label            ESF1          SF.SF1          SF.SF2          SF.SF3          SM.SM1          SM.SM2          SM.SM3
+                          @Loc 1          @Loc 1          @Loc 1          @Loc 1          @Loc 1          @Loc 1          @Loc 1
+---------------------------------------------------------------------------------------------------------------------------------
+               1     64.0144E+03     64.0144E+03    -4.53119E-12     23.5876E+03     61.8456E-12     239.436E+03    -797.258E-15
+
+
+  Minimum            64.0144E+03     64.0144E+03    -4.53119E-12     23.5876E+03     61.8456E-12     239.436E+03    -797.258E-15
+         At Node               1               1               1               1               1               1               1
+
+  Maximum            64.0144E+03     64.0144E+03    -4.53119E-12     23.5876E+03     61.8456E-12     239.436E+03    -797.258E-15
+         At Node               1               1               1               1               1               1               1
+
+           Total     64.0144E+03     64.0144E+03    -4.53119E-12     23.5876E+03     61.8456E-12     239.436E+03    -797.258E-15
+
+
