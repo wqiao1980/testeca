@@ -1,35 +1,42 @@
 from __future__ import print_function
 
-"""Create SF/SM/ESF1 field reports from Abaqus ODB files without a GUI.
+"""Extract ESF1, SF, and SM from Abaqus ODB files without GUI-only APIs.
 
 Run with the Abaqus Python environment, for example:
 
-    abaqus viewer noGUI=extract_sfsm_reports.py -- --odb model.odb
-    abaqus viewer noGUI=extract_sfsm_reports.py -- --input-dir C:\\path\\to\\odbs
+    abaqus python extract_sfsm_reports.py --odb model.odb
+    abaqus python extract_sfsm_reports.py --input-dir C:\\path\\to\\odbs
 
 The first command processes one ODB.  The second command processes every ODB
 in the input directory (non-recursively).  By default reports are written next
-to the ODB files.
+to the ODB files. Integration-point results are extrapolated to element nodes
+and the contributions at each requested node are averaged.
 """
 
 import argparse
+import datetime
+import math
 import os
 import re
 import sys
 import traceback
 
-from abaqus import session
-from abaqusConstants import ALL, INTEGRATION_POINT, NODAL, OFF
-import displayGroupOdbToolset as dgo
+from abaqusConstants import ELEMENT_NODAL, ON
+from odbAccess import openOdb
 
 
 DEFAULT_NODE_SET = "PART-1-1.START"
 DEFAULT_STEPS = ("Step-6", "Step-7")
 DEFAULT_FRAME_INDEX = 1
-REPORT_VARIABLES = (
-    ("ESF1", INTEGRATION_POINT),
-    ("SF", INTEGRATION_POINT),
-    ("SM", INTEGRATION_POINT),
+FIELD_NAMES = ("ESF1", "SF", "SM")
+COLUMN_SPECS = (
+    ("ESF1", 0, "ESF1"),
+    ("SF", 0, "SF.SF1"),
+    ("SF", 1, "SF.SF2"),
+    ("SF", 2, "SF.SF3"),
+    ("SM", 0, "SM.SM1"),
+    ("SM", 1, "SM.SM2"),
+    ("SM", 2, "SM.SM3"),
 )
 
 
@@ -38,7 +45,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(
         description=(
             "Write ESF1/SF/SM nodal reports for one ODB or every ODB in a "
-            "directory. Must be run with 'abaqus viewer noGUI=...'."
+            "directory. Uses odbAccess only; no CAE window is opened."
         )
     )
     parser.add_argument(
@@ -69,7 +76,7 @@ def parse_arguments():
     parser.add_argument(
         "--node-set",
         default=DEFAULT_NODE_SET,
-        help="Qualified assembly node set used by the display group.",
+        help="Qualified instance node set, for example PART-1-1.START.",
     )
     parser.add_argument(
         "--steps",
@@ -135,16 +142,47 @@ def default_report_name(odb_path):
     return stem + ".rpt"
 
 
-def get_viewport(odb):
-    viewport_names = list(session.viewports.keys())
-    if viewport_names:
-        viewport = session.viewports[viewport_names[0]]
-    else:
-        viewport = session.Viewport(
-            name="Viewport: 1", origin=(0.0, 0.0), width=150.0, height=100.0
+def repository_key(repository, requested_name):
+    """Find an Abaqus repository key without depending on letter case."""
+    if requested_name in repository:
+        return requested_name
+    requested_upper = requested_name.upper()
+    for key in repository.keys():
+        if key.upper() == requested_upper:
+            return key
+    return None
+
+
+def resolve_instance_node_set(odb, qualified_name):
+    if "." not in qualified_name:
+        raise ValueError(
+            "--node-set must include instance and set names, for example "
+            "PART-1-1.START"
         )
-    viewport.setValues(displayedObject=odb)
-    return viewport
+
+    instance_name, set_name = qualified_name.split(".", 1)
+    instance_key = repository_key(odb.rootAssembly.instances, instance_name)
+    if instance_key is None:
+        raise ValueError(
+            "Instance '{0}' is missing. Available instances: {1}".format(
+                instance_name, ", ".join(odb.rootAssembly.instances.keys())
+            )
+        )
+
+    instance = odb.rootAssembly.instances[instance_key]
+    set_key = repository_key(instance.nodeSets, set_name)
+    if set_key is None:
+        raise ValueError(
+            "Node set '{0}' is missing from instance '{1}'. Available sets: {2}".format(
+                set_name, instance_key, ", ".join(instance.nodeSets.keys())
+            )
+        )
+
+    node_set = instance.nodeSets[set_key]
+    node_labels = sorted(node.label for node in node_set.nodes)
+    if not node_labels:
+        raise ValueError("Node set '{0}' is empty.".format(qualified_name))
+    return instance_key, set_key, node_labels
 
 
 def validate_requested_data(odb, step_names, frame_index):
@@ -166,46 +204,212 @@ def validate_requested_data(odb, step_names, frame_index):
             )
 
         field_names = frames[frame_index].fieldOutputs.keys()
-        missing = [name for name in ("ESF1", "SF", "SM") if name not in field_names]
+        missing = [name for name in FIELD_NAMES if name not in field_names]
         if missing:
             raise ValueError(
                 "Step '{0}', frame {1} is missing field output(s): {2}".format(
                     step_name, frame_index, ", ".join(missing)
                 )
             )
-    return available_steps
 
 
-def write_report(odb_path, report_path, node_set, step_names, frame_index):
+def field_value_data(value):
+    try:
+        data = value.data
+    except Exception:
+        data = value.dataDouble
+
+    if isinstance(data, (int, float)):
+        return (float(data),)
+    return tuple(float(item) for item in data)
+
+
+def average_element_nodal_field(field_output, instance_name, node_labels):
+    """Extrapolate to element nodes, then average contributions by node label."""
+    target_labels = set(node_labels)
+    contributions = dict((label, []) for label in node_labels)
+    element_nodal = field_output.getSubset(position=ELEMENT_NODAL, readOnly=ON)
+
+    for value in element_nodal.values:
+        if value.nodeLabel not in target_labels:
+            continue
+        value_instance = getattr(value, "instance", None)
+        if value_instance is not None and value_instance.name.upper() != instance_name.upper():
+            continue
+        contributions[value.nodeLabel].append(field_value_data(value))
+
+    averaged = {}
+    counts = {}
+    for node_label in node_labels:
+        values = contributions[node_label]
+        if not values:
+            raise ValueError(
+                "No element-nodal values were found at node {0} for field '{1}'.".format(
+                    node_label, field_output.name
+                )
+            )
+        component_count = len(values[0])
+        for value in values:
+            if len(value) != component_count:
+                raise ValueError(
+                    "Inconsistent component count for field '{0}' at node {1}.".format(
+                        field_output.name, node_label
+                    )
+                )
+        averaged[node_label] = tuple(
+            sum(value[index] for value in values) / float(len(values))
+            for index in range(component_count)
+        )
+        counts[node_label] = len(values)
+    return averaged, counts
+
+
+def extract_frame_data(frame, instance_name, node_labels):
+    fields = {}
+    contribution_counts = {}
+    for field_name in FIELD_NAMES:
+        averaged, counts = average_element_nodal_field(
+            frame.fieldOutputs[field_name], instance_name, node_labels
+        )
+        fields[field_name] = averaged
+        contribution_counts[field_name] = counts
+
+    rows = []
+    for node_label in node_labels:
+        values = []
+        for field_name, component_index, unused_title in COLUMN_SPECS:
+            field_values = fields[field_name][node_label]
+            if component_index >= len(field_values):
+                raise ValueError(
+                    "Field '{0}' at node {1} has {2} component(s); component {3} "
+                    "was requested.".format(
+                        field_name,
+                        node_label,
+                        len(field_values),
+                        component_index + 1,
+                    )
+                )
+            values.append(field_values[component_index])
+        rows.append((node_label, values))
+    return rows, contribution_counts
+
+
+def engineering_format(value):
+    """Six-significant-digit engineering notation similar to a CAE report."""
+    if math.isnan(value) or math.isinf(value):
+        return str(value)
+    if value == 0.0:
+        return "0.00000"
+
+    exponent = int(math.floor(math.log10(abs(value)) / 3.0) * 3)
+    mantissa = value / (10.0 ** exponent)
+    digits_before_decimal = int(math.floor(math.log10(abs(mantissa)))) + 1
+    decimal_places = max(0, 6 - digits_before_decimal)
+    mantissa_text = ("{0:.%df}" % decimal_places).format(mantissa)
+
+    if abs(float(mantissa_text)) >= 1000.0:
+        exponent += 3
+        mantissa /= 1000.0
+        digits_before_decimal = int(math.floor(math.log10(abs(mantissa)))) + 1
+        decimal_places = max(0, 6 - digits_before_decimal)
+        mantissa_text = ("{0:.%df}" % decimal_places).format(mantissa)
+
+    return "{0}E{1:+03d}".format(mantissa_text, exponent)
+
+
+def write_table(report_file, rows):
+    titles = [spec[2] for spec in COLUMN_SPECS]
+    header = "{0:>16}".format("Node Label")
+    header += "".join("{0:>16}".format(title) for title in titles)
+    locations = "{0:>16}".format("")
+    locations += "".join("{0:>16}".format("@Loc 1") for unused in titles)
+
+    report_file.write(header + "\n")
+    report_file.write(locations + "\n")
+    report_file.write("-" * len(header) + "\n")
+    for node_label, values in rows:
+        line = "{0:>16d}".format(node_label)
+        line += "".join("{0:>16}".format(engineering_format(value)) for value in values)
+        report_file.write(line + "\n")
+
+    columns = list(zip(*(values for unused_label, values in rows)))
+    minimums = [min(column) for column in columns]
+    maximums = [max(column) for column in columns]
+    totals = [sum(column) for column in columns]
+    min_nodes = [rows[list(column).index(min(column))][0] for column in columns]
+    max_nodes = [rows[list(column).index(max(column))][0] for column in columns]
+
+    report_file.write("\n\n")
+    report_file.write("{0:>16}".format("Minimum"))
+    report_file.write("".join("{0:>16}".format(engineering_format(v)) for v in minimums))
+    report_file.write("\n")
+    report_file.write("{0:>16}".format("At Node"))
+    report_file.write("".join("{0:>16d}".format(v) for v in min_nodes))
+    report_file.write("\n\n")
+    report_file.write("{0:>16}".format("Maximum"))
+    report_file.write("".join("{0:>16}".format(engineering_format(v)) for v in maximums))
+    report_file.write("\n")
+    report_file.write("{0:>16}".format("At Node"))
+    report_file.write("".join("{0:>16d}".format(v) for v in max_nodes))
+    report_file.write("\n\n")
+    report_file.write("{0:>16}".format("Total"))
+    report_file.write("".join("{0:>16}".format(engineering_format(v)) for v in totals))
+    report_file.write("\n\n\n")
+
+
+def write_report(odb_path, report_path, node_set_name, step_names, frame_index):
     odb = None
     try:
         print("Opening: {0}".format(odb_path))
-        odb = session.openOdb(name=odb_path, readOnly=True)
-        available_steps = validate_requested_data(odb, step_names, frame_index)
-
-        viewport = get_viewport(odb)
-        leaf = dgo.LeafFromNodeSets(nodeSets=(node_set,))
-        viewport.odbDisplay.displayGroup.replace(leaf=leaf)
-
-        active_frames = tuple((name, (frame_index,)) for name in step_names)
-        odb_display_name = viewport.odbDisplay.name
-        session.odbData[odb_display_name].setValues(activeFrames=active_frames)
-
-        # step/frame are required even with stepFrame=ALL.  The last active
-        # step mirrors the CAE-generated replay command used for the example.
-        reference_step_index = available_steps.index(step_names[-1])
-        session.writeFieldReport(
-            fileName=report_path,
-            append=OFF,
-            sortItem="Node Label",
-            odb=odb,
-            step=reference_step_index,
-            frame=frame_index,
-            outputPosition=NODAL,
-            variable=REPORT_VARIABLES,
-            stepFrame=ALL,
+        odb = openOdb(path=odb_path, readOnly=True)
+        validate_requested_data(odb, step_names, frame_index)
+        instance_name, set_name, node_labels = resolve_instance_node_set(
+            odb, node_set_name
         )
+
+        extracted_frames = []
+        max_contributions = 0
+        for step_name in step_names:
+            frame = odb.steps[step_name].frames[frame_index]
+            rows, contribution_counts = extract_frame_data(
+                frame, instance_name, node_labels
+            )
+            for field_counts in contribution_counts.values():
+                max_contributions = max(max_contributions, max(field_counts.values()))
+            extracted_frames.append((step_name, frame, rows))
+
+        with open(report_path, "w") as report_file:
+            report_file.write("*" * 80 + "\n")
+            report_file.write(
+                "Field Output Report, written {0}\n\n".format(
+                    datetime.datetime.now().strftime("%a %b %d %H:%M:%S %Y")
+                )
+            )
+            for step_name, frame, rows in extracted_frames:
+                report_file.write("Source 1\n")
+                report_file.write("---------\n\n")
+                report_file.write("   ODB: {0}\n".format(odb_path.replace("\\", "/")))
+                report_file.write("   Step: {0}\n".format(step_name))
+                report_file.write("   Frame: {0}\n\n".format(frame.description))
+                report_file.write("Loc 1 : Nodal values from source 1\n\n")
+                report_file.write('Output sorted by column "Node Label".\n\n')
+                report_file.write(
+                    "Field Output reported at nodes for region: {0}.{1}\n".format(
+                        instance_name, set_name
+                    )
+                )
+                report_file.write(
+                    "   Computation algorithm: EXTRAPOLATE_COMPUTE_AVERAGE\n"
+                )
+                report_file.write("   Averaged at nodes\n\n")
+                write_table(report_file, rows)
+
         print("Wrote:   {0}".format(report_path))
+        if max_contributions > 1:
+            print(
+                "Note: up to {0} element-nodal contributions were arithmetically "
+                "averaged at a requested node.".format(max_contributions)
+            )
     finally:
         if odb is not None:
             odb.close()
@@ -236,6 +440,7 @@ def main():
 
     odb_paths = find_odb_files(input_dir, args.odb)
     jobs = build_jobs(odb_paths, output_dir, args.output_name)
+    print("Extraction mode: odbAccess (no CAE/Viewer display-group API).")
     print("Found {0} ODB file(s).".format(len(jobs)))
 
     failures = []
@@ -244,7 +449,7 @@ def main():
             write_report(
                 odb_path=odb_path,
                 report_path=report_path,
-                node_set=args.node_set,
+                node_set_name=args.node_set,
                 step_names=args.steps,
                 frame_index=args.frame_index,
             )
