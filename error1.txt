@@ -1,0 +1,10 @@
+C:\Data\P1-2\00_NewFA>abaqus viewer noGUI=extract_sfsm_reports.py -- --GdM_10inProd_InterfaceLoad_PLETanchorNew.odb
+Abaqus License Manager checked out the following license(s):
+"viewer" release 6.22 from Dassault2-Global
+<22 out of 25 licenses remain available>.
+ImportError: No module named displayGroupOdbToolset
+File "extract_sfsm_reports.py", line 23, in <module>
+    import displayGroupOdbToolset as dgo
+
+Abaqus Error: viewer exited with an error.
+Abaqus Error: Abaqus/Viewer exited with an error
