@@ -17,7 +17,6 @@ import argparse
 import datetime
 import math
 import os
-import re
 import sys
 import traceback
 
@@ -129,16 +128,8 @@ def find_odb_files(input_dir, requested):
 
 
 def default_report_name(odb_path):
-    """Use the original 10inPLET naming when recognizable; otherwise use the ODB stem."""
+    """Keep the ODB basename and replace only its extension with .rpt."""
     stem = os.path.splitext(os.path.basename(odb_path))[0]
-    match = re.match(
-        r"^GdM_(?P<size>[^_]+)Prod_.*_PLETanchor(?:_(?P<case>.+))?New$",
-        stem,
-        re.IGNORECASE,
-    )
-    if match:
-        case_name = match.group("case") or "0deg"
-        return "{0}PLET_{1}.rpt".format(match.group("size"), case_name)
     return stem + ".rpt"
 
 
