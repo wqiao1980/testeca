@@ -16,3 +16,44 @@ usage: extract_sfsm_reports.py [-h] [--input-dir INPUT_DIR] [--odb ODB]
                                [--steps STEPS [STEPS ...]]
                                [--frame-index FRAME_INDEX]
 extract_sfsm_reports.py: error: unrecognized arguments: --GdM_10inProd_InterfaceLoad_PLETanchorNew.odb
+C:\Data\P1-2\00_NewFA>abaqus python "C:\Data\P1-2\00_NewFA\extract_sfsm_reports.py" --input-dir "C:\Data\P1-2\00_NewFA\03_12inTRF"
+Extraction mode: odbAccess (no CAE/Viewer display-group API).
+Found 3 ODB file(s).
+Opening: C:\Data\P1-2\00_NewFA\03_12inTRF\GdM_12inProd_InterfaceLoad_TRFanchor_Neg1degNew.odb
+FAILED:  C:\Data\P1-2\00_NewFA\03_12inTRF\GdM_12inProd_InterfaceLoad_TRFanchor_Neg1degNew.odb
+         Step 'Step-6' is missing. Available steps: Step-1, Step-2, AsLaid, HydroTension, HydroCompression, DesignTension, DesignCompression, Operation, FullCooldown
+Traceback (most recent call last):
+  File "C:\Data\P1-2\00_NewFA\extract_sfsm_reports.py", line 454, in main
+    frame_index=args.frame_index,
+  File "C:\Data\P1-2\00_NewFA\extract_sfsm_reports.py", line 365, in write_report
+    validate_requested_data(odb, step_names, frame_index)
+  File "C:\Data\P1-2\00_NewFA\extract_sfsm_reports.py", line 194, in validate_requested_data
+    step_name, ", ".join(available_steps)
+ValueError: Step 'Step-6' is missing. Available steps: Step-1, Step-2, AsLaid, HydroTension, HydroCompression, DesignTension, DesignCompression, Operation, FullCooldown
+Opening: C:\Data\P1-2\00_NewFA\03_12inTRF\GdM_12inProd_InterfaceLoad_TRFanchor_Pos1degNew.odb
+FAILED:  C:\Data\P1-2\00_NewFA\03_12inTRF\GdM_12inProd_InterfaceLoad_TRFanchor_Pos1degNew.odb
+         Step 'Step-6' is missing. Available steps: Step-1, Step-2, AsLaid, HydroTension, HydroCompression, DesignTension, DesignCompression, Operation, FullCooldown
+Traceback (most recent call last):
+  File "C:\Data\P1-2\00_NewFA\extract_sfsm_reports.py", line 454, in main
+    frame_index=args.frame_index,
+  File "C:\Data\P1-2\00_NewFA\extract_sfsm_reports.py", line 365, in write_report
+    validate_requested_data(odb, step_names, frame_index)
+  File "C:\Data\P1-2\00_NewFA\extract_sfsm_reports.py", line 194, in validate_requested_data
+    step_name, ", ".join(available_steps)
+ValueError: Step 'Step-6' is missing. Available steps: Step-1, Step-2, AsLaid, HydroTension, HydroCompression, DesignTension, DesignCompression, Operation, FullCooldown
+Opening: C:\Data\P1-2\00_NewFA\03_12inTRF\GdM_12inProd_InterfaceLoad_TRFanchorNew.odb
+FAILED:  C:\Data\P1-2\00_NewFA\03_12inTRF\GdM_12inProd_InterfaceLoad_TRFanchorNew.odb
+         Step 'Step-6' is missing. Available steps: Step-1, Step-2, AsLaid, HydroTension, HydroCompression, DesignTension, DesignCompression, Operation, FullCooldown
+Traceback (most recent call last):
+  File "C:\Data\P1-2\00_NewFA\extract_sfsm_reports.py", line 454, in main
+    frame_index=args.frame_index,
+  File "C:\Data\P1-2\00_NewFA\extract_sfsm_reports.py", line 365, in write_report
+    validate_requested_data(odb, step_names, frame_index)
+  File "C:\Data\P1-2\00_NewFA\extract_sfsm_reports.py", line 194, in validate_requested_data
+    step_name, ", ".join(available_steps)
+ValueError: Step 'Step-6' is missing. Available steps: Step-1, Step-2, AsLaid, HydroTension, HydroCompression, DesignTension, DesignCompression, Operation, FullCooldown
+Completed: 0 succeeded, 3 failed.
+Failed ODB files:
+  C:\Data\P1-2\00_NewFA\03_12inTRF\GdM_12inProd_InterfaceLoad_TRFanchor_Neg1degNew.odb: Step 'Step-6' is missing. Available steps: Step-1, Step-2, AsLaid, HydroTension, HydroCompression, DesignTension, DesignCompression, Operation, FullCooldown
+  C:\Data\P1-2\00_NewFA\03_12inTRF\GdM_12inProd_InterfaceLoad_TRFanchor_Pos1degNew.odb: Step 'Step-6' is missing. Available steps: Step-1, Step-2, AsLaid, HydroTension, HydroCompression, DesignTension, DesignCompression, Operation, FullCooldown
+  C:\Data\P1-2\00_NewFA\03_12inTRF\GdM_12inProd_InterfaceLoad_TRFanchorNew.odb: Step 'Step-6' is missing. Available steps: Step-1, Step-2, AsLaid, HydroTension, HydroCompression, DesignTension, DesignCompression, Operation, FullCooldown
